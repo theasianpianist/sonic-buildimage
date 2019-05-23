@@ -9,7 +9,7 @@ sudo apt-get install libvirt-clients qemu-kvm libvirt-bin
 2. Create SONiC VM
 
 ```
-$ virsh
+$ sudo virsh
 Welcome to virsh, the virtualization interactive terminal.
 
 Type:  'help' for help with commands
@@ -22,14 +22,30 @@ Domain sonic created from sonic.xml
 virsh # 
 ```
 
-2. Connect SONiC VM via console
+3. Access virtual switch:
 
-```
-$ telnet 127.0.0.1 7000
-```
+    1. Connect SONiC VM via console
 
-3. Connect SONiC VM via SSH
+    ```
+    $ telnet 127.0.0.1 7000
+    ```
+    
+    OR
 
-```
-$ ssh -p 3040 admin@127.0.0.1
-```
+    2. Connect SONiC VM via SSH
+        
+        1. Create the `libvirt` group if it doesn't already exist
+        
+        ```
+        $ sudo groupadd libvirt
+        ```
+        2. Add yourself to the `libvirt` group
+        
+        ```
+        $ sudo usermod -G libvirt -a $USER
+        ```
+        3. Connect via SSH
+        ```
+        $ ssh -p 3040 admin@127.0.0.1
+        ```
+        Note: when connecting via SSH, after starting/rebooting the VM there is a wait period until SSH access is available. This delay is dependent on the number of network interfaces defined in `sonic.xml` (for 32 interfaces the delay is about 15 seconds, and increases from there). Attempting to SSH into the VM during this delay will break SSH access until the VM is rebooted.
