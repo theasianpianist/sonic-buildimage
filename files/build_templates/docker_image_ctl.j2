@@ -1,5 +1,44 @@
 #!/bin/bash
 
+{% set multi_instance = ["namespace"] %} # list of containers to run multiple instances of
+
+
+{%- if docker_container_name == "namespace" %}
+create_container() {
+    # Creates a basic container if it doesn't already exist
+
+    if ! `docker ps -a --format {{"'{{.Names}}'"}}| grep --quiet "{{docker_container_name}}$1"`; then
+        echo "No container for namespace $1 found, starting a new one"
+        docker run -id --name "{{docker_container_name}}$1" {{docker_image_name}}:latest bash
+        docker pause "{{docker_container_name}}$1" # pause to minimize resource consumption - we don't need the container, just it's network namespace
+    else
+        echo "Container for namespace $1 already exists"
+		docker start "{{docker_container_name}}$1"
+		docker pause "{{docker_container_name}}$1"
+    fi
+}
+
+
+link_namespace() {
+    # Makes namespace of a docker container available in
+    # /var/run/netns so it can be managed with iproute2
+
+    mkdir -p /var/run/netns
+    PID="$(docker inspect -f {{"'{{.State.Pid}}'"}} "{{docker_container_name}}$1")"
+
+    if `ip netns | grep --quiet "{{docker_container_name}}$1"`; then # namespace exists
+        if [ $(readlink -f /var/run/netns/ns$1) = $(readlink -f /proc/$PID/ns/net) ]; then # namespace is correctly linked
+            return 0
+        else # if it's incorrectly linked remove it
+            ip netns delete "{{docker_container_name}}$1"
+        fi
+    fi
+
+    ln -s /proc/$PID/ns/net /var/run/netns/{{docker_container_name}}$1
+}
+
+{%- endif %}
+
 function getMountPoint()
 {
     echo $1 | python -c "import sys, json, os; mnts = [x for x in json.load(sys.stdin)[0]['Mounts'] if x['Destination'] == '/usr/share/sonic/hwsku']; print '' if len(mnts) == 0 else os.path.basename(mnts[0]['Source'])" 2>/dev/null
@@ -92,96 +131,131 @@ function postStartAction()
 }
 
 start() {
-    # Obtain boot type from kernel arguments
-    BOOT_TYPE=`getBootType`
 
-    # Obtain our platform as we will mount directories with these names in each docker
-    PLATFORM=`sonic-cfggen -H -v DEVICE_METADATA.localhost.platform`
-
-    {%- if docker_container_name == "database" %}
-    # Don't mount HWSKU in {{docker_container_name}} container.
-    HWSKU=""
-    {%- else %}
-    # Obtain our HWSKU as we will mount directories with these names in each docker
-    HWSKU=`sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["hwsku"]'`
-    {%- endif %}
-
-    DOCKERCHECK=`docker inspect --type container {{docker_container_name}} 2>/dev/null`
-    if [ "$?" -eq "0" ]; then
-        {%- if docker_container_name == "database" %}
-        DOCKERMOUNT=""
-        {%- else %}
-        DOCKERMOUNT=`getMountPoint "$DOCKERCHECK"`
-        {%- endif %}
-        if [ x"$DOCKERMOUNT" == x"$HWSKU" ]; then
-            {%- if docker_container_name == "database" %}
-            echo "Starting existing {{docker_container_name}} container"
-            {%- else %}
-            echo "Starting existing {{docker_container_name}} container with HWSKU $HWSKU"
-            {%- endif %}
-            preStartAction
-            docker start {{docker_container_name}}
-            postStartAction
-            exit $?
-        fi
-
-        # docker created with a different HWSKU, remove and recreate
-        echo "Removing obsolete {{docker_container_name}} container with HWSKU $DOCKERMOUNT"
-        docker rm -f {{docker_container_name}}
-    fi
-
-{%- if docker_container_name == "database" %}
-    echo "Creating new {{docker_container_name}} container"
+{%- if docker_container_name == "namespace" %}
+	create_container $DEV
+	link_namespace $DEV
 {%- else %}
-    echo "Creating new {{docker_container_name}} container with HWSKU $HWSKU"
-{%- endif %}
-    docker create {{docker_image_run_opt}} \
-{%- if '--log-driver=json-file' in docker_image_run_opt or '--log-driver' not in docker_image_run_opt %}
-        --log-opt max-size=2M --log-opt max-file=5 \
-{%- endif %}
-{%- if sonic_asic_platform == "mellanox" %}
-{%- if docker_container_name == "syncd" %}
-        -e SX_SNIFFER_ENABLE \
-        -e SX_SNIFFER_TARGET \
-        -e PRM_SNIFFER \
-        -e PRM_SNIFFER_FILE_PATH \
-        -v /var/log/mellanox/sniffer:/var/log/mellanox/sniffer:rw \
-{%- endif %}
-{%- if docker_container_name == "pmon" %}
-        -v /var/run/hw-management:/var/run/hw-management:rw \
-{%- endif %}
-{%- endif %}
-        -v /var/run/redis:/var/run/redis:rw \
-        -v /usr/share/sonic/device/$PLATFORM:/usr/share/sonic/platform:ro \
-{%- if docker_container_name != "database" %}
-        -v /usr/share/sonic/device/$PLATFORM/$HWSKU:/usr/share/sonic/hwsku:ro \
-{%- endif %}
-        --tmpfs /tmp \
-        --tmpfs /var/tmp \
-        --name={{docker_container_name}} {{docker_image_name}}:latest || {
-            echo "Failed to docker run" >&1
-            exit 4
-    }
+	# Obtain boot type from kernel arguments
+	BOOT_TYPE=`getBootType`
 
-    preStartAction
-    docker start {{docker_container_name}}
-    postStartAction
+	# Obtain our platform as we will mount directories with these names in each docker
+	PLATFORM=`sonic-cfggen -H -v DEVICE_METADATA.localhost.platform`
+
+	{%- if docker_container_name == "database" %}
+		# Don't mount HWSKU in {{docker_container_name}} container.
+		HWSKU=""
+	{%- else %}
+		# Obtain our HWSKU as we will mount directories with these names in each docker
+		HWSKU=`sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["hwsku"]'`
+	{%- endif %}
+
+	DOCKERCHECK=`docker inspect --type container {{docker_container_name}}$DEV 2>/dev/null`
+	if [ "$?" -eq "0" ]; then
+		{%- if docker_container_name == "database" %}
+			DOCKERMOUNT=""
+		{%- else %}
+			DOCKERMOUNT=`getMountPoint "$DOCKERCHECK"`
+		{%- endif %}
+		if [ x"$DOCKERMOUNT" == x"$HWSKU" ]; then
+			{%- if docker_container_name == "database" %}
+				echo "Starting existing {{docker_container_name}}$DEV container"
+			{%- else %}
+				echo "Starting existing {{docker_container_name}}$DEV container with HWSKU $HWSKU"
+			{%- endif %}
+			preStartAction
+			{%- if docker_container_name in multi_instance %}
+			docker start {{docker_container_name}}$DEV
+			{%- else %}
+			docker start {{docker_container_name}}
+			{%- endif %}
+			postStartAction
+			exit $?
+		fi
+
+		# docker created with a different HWSKU, remove and recreate
+		echo "Removing obsolete {{docker_container_name}}$DEV container with HWSKU $DOCKERMOUNT"
+		docker rm -f {{docker_container_name}}$DEV
+	fi
+
+	{%- if docker_container_name == "database" %}
+		echo "Creating new {{docker_container_name}}$DEV container"
+	{%- else %}
+		echo "Creating new {{docker_container_name}}$DEV container with HWSKU $HWSKU"
+	{%- endif %}
+		if [ -z "$DEV" ]; then
+			NET="host"
+		else
+			NET="ns$DEV"
+		fi
+		docker create {{docker_image_run_opt}} \
+	{%- if docker_container_name in multi_instance %}
+			--net=namespace$DEV \
+	{%- else %}
+			--net=host \
+	{%- endif %}
+	{%- if '--log-driver=json-file' in docker_image_run_opt or '--log-driver' not in docker_image_run_opt %}
+			--log-opt max-size=2M --log-opt max-file=5 \
+	{%- endif %}
+	{%- if sonic_asic_platform == "mellanox" %}
+		{%- if docker_container_name == "syncd" %}
+			-e SX_SNIFFER_ENABLE \
+			-e SX_SNIFFER_TARGET \
+			-e PRM_SNIFFER \
+			-e PRM_SNIFFER_FILE_PATH \
+			-v /var/log/mellanox/sniffer:/var/log/mellanox/sniffer:rw \
+		{%- endif %}
+		{%- if docker_container_name == "pmon" %}
+			-v /var/run/hw-management:/var/run/hw-management:rw \
+		{%- endif %}
+	{%- endif %}
+			-v /var/run/redis:/var/run/redis:rw \
+			-v /usr/share/sonic/device/$PLATFORM:/usr/share/sonic/platform:ro \
+	{%- if docker_container_name != "database" %}
+			-v /usr/share/sonic/device/$PLATFORM/$HWSKU:/usr/share/sonic/hwsku:ro \
+	{%- endif %}
+			--tmpfs /tmp \
+			--tmpfs /var/tmp \
+	{%- if docker_container_name in multi_instance %}
+			--name={{docker_container_name}}$DEV \
+	{%- else %}
+			--name={{docker_container_name}} \
+	{%- endif %}
+			{{docker_image_name}}:latest || {
+				echo "Failed to docker run" >&1
+				exit 4
+			}
+
+	preStartAction
+	docker start {{docker_container_name}}$DEV
+	postStartAction
+{%- endif %}
 }
 
 wait() {
-    docker wait {{docker_container_name}}
+    docker wait {{docker_container_name}}$DEV
 }
 
 stop() {
-    docker stop {{docker_container_name}}
+    docker stop {{docker_container_name}}$DEV
+{%- if docker_container_name == "namespace" %}
+    ip netns delete "{{docker_container_name}}$DEV"
+{%- endif %}
 }
+
+OP=$1
+DEV=$2 # namespace/device number to operate on
+
+if [ -z "$NUM_ASICS" ]; then
+    export NUM_ASICS=6
+fi
 
 case "$1" in
     start|wait|stop)
         $1
         ;;
     *)
-        echo "Usage: $0 {start|wait|stop}"
+        echo "Usage: $0 {start|wait|stop} {namespace}"
         exit 1
         ;;
 esac

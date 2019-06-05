@@ -295,7 +295,13 @@ sudo cp {{script}} $FILESYSTEM_ROOT/usr/bin/
 {% for service in installer_services.split(' ') -%}
 if [ -f {{service}} ]; then
     sudo cp {{service}} $FILESYSTEM_ROOT/etc/systemd/system/
-    sudo LANG=C chroot $FILESYSTEM_ROOT systemctl enable {{service}}
+	{% if '@' in service %}
+		{% for i in range(6) %}
+	sudo LANG=C chroot $FILESYSTEM_ROOT systemctl enable {{service.split('.')[0]}}{{i}}.service
+		{% endfor %}
+	{% else %}
+	sudo LANG=C chroot $FILESYSTEM_ROOT systemctl enable {{service}}
+	{% endif %}
 fi
 {% endfor %}
 sudo LANG=C chroot $FILESYSTEM_ROOT fuser -km /sys || true
