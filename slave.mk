@@ -639,16 +639,19 @@ $(addprefix $(TARGET_PATH)/, $(SONIC_INSTALLERS)) : $(TARGET_PATH)/% : \
 		# Accounts for template files
 		elif [ -f files/build_templates/$($(docker)_CONTAINER_NAME)@.service.j2 ]; then
 			j2 files/build_templates/$($(docker)_CONTAINER_NAME)@.service.j2 > $($(docker)_CONTAINER_NAME)@.service
+
+			# performs the same check as the elif above, except with make commands so eval behaves properly
+			$(if $(shell ls files/build_templates/$($(docker)_CONTAINER_NAME)@.service.j2 2>/dev/null),\
+				$(eval $(docker)_TEMPLATE = yes))
 		fi
 		chmod +x $($(docker)_CONTAINER_NAME).sh
 	)
 	
-
-
+	# Exported variables are used by sonic_debian_extension.sh
 	export installer_start_scripts="$(foreach docker, $($*_DOCKERS),$(addsuffix .sh, $($(docker)_CONTAINER_NAME)))"
 
 	# Marks template services with an "@" according to systemd convention
-	# If the $($docker)_TEMPLATE) variable is set in rules/docker_*.mk, the service will be treated as a template
+	# If the $($docker)_TEMPLATE) variable is set, the service will be treated as a template
 	$(foreach docker, $($*_DOCKERS),\
 		$(if $($(docker)_TEMPLATE),\
 			$(eval SERVICES += "$(addsuffix @.service, $($(docker)_CONTAINER_NAME))"),\
