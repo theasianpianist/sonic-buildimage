@@ -25,7 +25,6 @@ virsh #
 3. Access virtual switch:
 
     1. Connect SONiC VM via console
-
     ```
     $ telnet 127.0.0.1 7000
     ```
@@ -34,18 +33,14 @@ virsh #
 
     2. Connect SONiC VM via SSH
         
-        1. Create the `libvirt` group if it doesn't already exist
+        1. Connect via console (see 3.1 above)
+
+        2. Request a new DHCP address
+        ```
+        sudo dhclient -v
+        ```
         
-        ```
-        $ sudo groupadd libvirt
-        ```
-        2. Add yourself to the `libvirt` group
-        
-        ```
-        $ sudo usermod -G libvirt -a $USER
-        ```
         3. Connect via SSH
         ```
         $ ssh -p 3040 admin@127.0.0.1
         ```
-        Note: when connecting via SSH, after starting/rebooting the VM there is a wait period until SSH access is available. This delay is dependent on the number of network interfaces defined in `sonic.xml` (for 32 interfaces the delay is about 15 seconds, and increases from there). Attempting to SSH into the VM during this delay will break SSH access until the VM is rebooted.
