@@ -1,6 +1,6 @@
 #! /bin/bash
 
-{% set multi_instance = ["namespace", "database"] %} # list of containers to run multiple instances of
+{% set multi_instance = ["namespace", "database", "swss"] %} # list of containers to run multiple instances of
 
 
 {%- if docker_container_name == "namespace" %}
@@ -10,12 +10,11 @@ create_container() {
     if ! `docker ps -a --format {{"'{{.Names}}'"}}| grep --quiet "{{docker_container_name}}$1"`; then
         echo "No container for namespace $1 found, starting a new one"
         docker run -id --name "{{docker_container_name}}$1" {{docker_image_name}}:latest bash
-        docker pause "{{docker_container_name}}$1" # pause to minimize resource consumption - we don't need the container, just it's network namespace
     else
         echo "Container for namespace $1 already exists"
 		docker start "{{docker_container_name}}$1"
-		docker pause "{{docker_container_name}}$1"
     fi
+    docker pause "{{docker_container_name}}$1" # pause to minimize resource consumption - we don't need the container, just it's network namespace
 }
 
 
@@ -70,17 +69,17 @@ function preStartAction()
     if [[ ("$BOOT_TYPE" == "warm" || "$BOOT_TYPE" == "fastfast")  && -f $WARM_DIR/dump.rdb ]]; then
         # Load redis content from /host/warmboot/dump.rdb
 		{%- if docker_container_name in multi_instance %}
-			docker cp $WARM_DIR/dump.rdb database:/var/lib/redis/dump.rdb
+        docker cp $WARM_DIR/dump.rdb database:/var/lib/redis/dump.rdb
 		{%- else %}
-			docker cp $WARM_DIR/dump.rdb database$DEV:/var/lib/redis/dump.rdb
+        docker cp $WARM_DIR/dump.rdb database$DEV:/var/lib/redis/dump.rdb
 		{%- endif %}
     else
         # Create an emtpy file and overwrite any RDB if already there
         echo -n > /tmp/dump.rdb
 		{%- if docker_container_name in multi_instance %}
-			docker cp /tmp/dump.rdb database$DEV:/var/lib/redis/
+        docker cp /tmp/dump.rdb database$DEV:/var/lib/redis/
 		{%- else %}
-			docker cp /tmp/dump.rdb database:/var/lib/redis/
+        docker cp /tmp/dump.rdb database:/var/lib/redis/
 		{%- endif %}
     fi
 {%- else %}
@@ -93,11 +92,11 @@ function postStartAction()
 {%- if docker_container_name == "database" %}
     # Wait until redis starts
 	{%- if docker_container_name in multi_instance %}
-		REDIS_SOCK="/var/run/redis/redis$DEV.sock"
-    until [[ $(/usr/bin/docker exec database$DEV redis-cli -s $REDIS_SOCK ping | grep -c PONG) -gt 0 ]]; do
+    REDIS_SOCK="/var/run/redis/redis$DEV.sock"
+    until [[ $(/usr/bin/redis-cli $DEV -s $REDIS_SOCK ping | grep -c PONG) -gt 0 ]]; do
 	{%- else %}
-		REDIS_SOCK="/var/run/redis/redis.sock"
-    until [[ $(/usr/bin/docker exec database redis-cli -s $REDIS_SOCK ping | grep -c PONG) -gt 0 ]]; do
+    REDIS_SOCK="/var/run/redis/redis.sock"
+    until [[ $(/usr/bin/redis-cli -s $REDIS_SOCK ping | grep -c PONG) -gt 0 ]]; do
 	{%- endif %}
         sleep 1;
     done
@@ -110,38 +109,42 @@ function postStartAction()
         fi
 
 		{%- if docker_container_name in multi_instance %}
-			docker exec -it database$DEV redis-cli -n 4 -s $REDIS_SOCK SET "CONFIG_DB_INITIALIZED" "1" 
+        redis-cli $DEV -n 4 -s $REDIS_SOCK SET "CONFIG_DB_INITIALIZED" "1" 
 		{%- else %}
-			docker exec -it database redis-cli -n 4 -s $REDIS_SOCK SET "CONFIG_DB_INITIALIZED" "1" 
+        redis-cli $DEV -n 4 -s $REDIS_SOCK SET "CONFIG_DB_INITIALIZED" "1" 
 		{%- endif %}
     fi
 
     if [[ -x /usr/bin/db_migrator.py ]]; then
         # Migrate the DB to the latest schema version if needed
 		{%- if docker_container_name in multi_instance %}
-			/usr/bin/db_migrator.py -o migrate -s $REDIS_SOCK
+        /usr/bin/db_migrator.py -o migrate -s $REDIS_SOCK
 		{%- else %}
-			/usr/bin/db_migrator.py -o migrate
+        /usr/bin/db_migrator.py -o migrate
 		{%- endif %}
     fi
 {%- elif docker_container_name == "swss" %}
-    docker exec swss rm -f /ready   # remove cruft
+    {%- if docker_container_name in multi_instance %}
+    docker exec swss$DEV rm -f /ready   # remove cruft
+    {%- else %}
+    docker exec swss rm -f /ready
+    {%- endif %}
     if [[ "$BOOT_TYPE" == "fast" ]] && [[ -d /host/fast-reboot ]]; then
 		{%- if docker_container_name in multi_instance %}
-			test -e /host/fast-reboot/fdb.json && docker cp /host/fast-reboot/fdb.json swss$DEV:/
-			test -e /host/fast-reboot/arp.json && docker cp /host/fast-reboot/arp.json swss$DEV:/
-			test -e /host/fast-reboot/default_routes.json && docker cp /host/fast-reboot/default_routes.json swss$DEV:/
+        test -e /host/fast-reboot/fdb.json && docker cp /host/fast-reboot/fdb.json swss$DEV:/
+        test -e /host/fast-reboot/arp.json && docker cp /host/fast-reboot/arp.json swss$DEV:/
+        test -e /host/fast-reboot/default_routes.json && docker cp /host/fast-reboot/default_routes.json swss$DEV:/
 		{%- else %}
-			test -e /host/fast-reboot/fdb.json && docker cp /host/fast-reboot/fdb.json swss:/
-			test -e /host/fast-reboot/arp.json && docker cp /host/fast-reboot/arp.json swss:/
-			test -e /host/fast-reboot/default_routes.json && docker cp /host/fast-reboot/default_routes.json swss:/
+        test -e /host/fast-reboot/fdb.json && docker cp /host/fast-reboot/fdb.json swss:/
+        test -e /host/fast-reboot/arp.json && docker cp /host/fast-reboot/arp.json swss:/
+        test -e /host/fast-reboot/default_routes.json && docker cp /host/fast-reboot/default_routes.json swss:/
 		{%- endif %}
         rm -fr /host/fast-reboot
     fi
 	{%- if docker_container_name in multi_instance %}
-		docker exec swss$DEV touch /ready
+    docker exec swss$DEV touch /ready
 	{%- else %}
-		docker exec swss touch /ready   # signal swssconfig.sh to go
+    docker exec swss touch /ready   # signal swssconfig.sh to go
 	{%- endif %}
 {%- elif docker_container_name == "pmon" %}
 
@@ -165,10 +168,10 @@ function postStartAction()
 {%- elif docker_container_name == "snmp" %}
 	{%- if "database" in multi_instance %}
 		{%- for i in range(6) %}
-			docker exec -i database$i redis-cli -n 6 HSET 'DEVICE_METADATA|localhost' chassis_serial_number $(decode-syseeprom -s)
+			redis-cli $i-n 6 HSET 'DEVICE_METADATA|localhost' chassis_serial_number $(decode-syseeprom -s)
 		{%- endfor %}
 	{%- else %}
-		docker exec -i database redis-cli -n 6 HSET 'DEVICE_METADATA|localhost' chassis_serial_number $(decode-syseeprom -s)
+		redis-cli -n 6 HSET 'DEVICE_METADATA|localhost' chassis_serial_number $(decode-syseeprom -s)
 	{%- endif %}
 {%- else %}
     : # nothing
@@ -192,7 +195,11 @@ start() {
 		HWSKU=""
 	{%- else %}
 		# Obtain our HWSKU as we will mount directories with these names in each docker
+		{%- if docker_container_name in multi_instance %}
+		HWSKU=`sonic-cfggen -d -s /var/run/redis/redis$DEV.sock -v 'DEVICE_METADATA["localhost"]["hwsku"]'`
+		{%- else %}
 		HWSKU=`sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["hwsku"]'`
+		{%- endif %}
 	{%- endif %}
 	
 	{%- if docker_container_name in multi_instance %}
@@ -298,8 +305,8 @@ start() {
 	{%- if docker_container_name in multi_instance %}
 		docker start {{docker_container_name}}$DEV
 		{%- if docker_container_name == "database" %}
-			docker exec {{docker_container_name}}$DEV sed -ri "s|^unixsocket .*|unixsocket /var/run/redis/redis$DEV.sock|" /etc/redis/redis.conf
-			docker restart {{docker_container_name}}$DEV
+		docker exec {{docker_container_name}}$DEV sed -ri "s|^unixsocket .*|unixsocket /var/run/redis/redis$DEV.sock|" /etc/redis/redis.conf
+		docker restart {{docker_container_name}}$DEV
 		{%- endif %}
 	{%- else %}
 		docker start {{docker_container_name}}
