@@ -7,7 +7,8 @@ Requires=opennsl-modules.service
 {% elif sonic_asic_platform == 'nephos' %}
 Requires=nps-modules-4.9.0-8-2-amd64.service
 {% endif %}
-After=database.service updategraph.service
+After=database.service 
+#updategraph.service
 #After=interfaces-config.service
 {% if sonic_asic_platform == 'broadcom' %}
 After=opennsl-modules.service

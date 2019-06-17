@@ -5,7 +5,8 @@
 # commands being sent to the base container name. E.g. `docker start database$DEV` simply starts
 # the container `database` if no instance number is passed since `$DEV` is not defined
 
-{% set multi_instance = ["namespace", "database", "swss"] %} # list of containers to run multiple instances of
+{% set multi_instance = ["namespace", "database", "swss", "syncd"] %} # list of containers to run multiple instances of
+{% set link_orig_socket =  ["swss", "syncd"] %} # list of containers to link the default redis unix socket in
 
 
 {%- if docker_container_name == "namespace" %}
@@ -212,7 +213,11 @@ start() {
 			-v /var/run/hw-management:/var/run/hw-management:rw \
 		{%- endif %}
 	{%- endif %}
+	{%- if docker_container_name in link_orig_socket %}
+			-v /var/run/redis:/var/run/redis/socks:rw\
+	{%- else %}
 			-v /var/run/redis:/var/run/redis:rw \
+	{%- endif %}
 			-v /usr/share/sonic/device/$PLATFORM:/usr/share/sonic/platform:ro \
 	{%- if docker_container_name != "database" %}
 			-v /usr/share/sonic/device/$PLATFORM/$HWSKU:/usr/share/sonic/hwsku:ro \
@@ -231,6 +236,9 @@ start() {
 	{%- if docker_container_name == "database" %}
 	docker exec {{docker_container_name}}$DEV \
 		sed -ri "s|^unixsocket .*|unixsocket /var/run/redis/redis$DEV.sock|" /etc/redis/redis.conf
+	docker restart {{docker_container_name}}$DEV
+	{%- elif docker_container_name in link_orig_socket %}
+	docker exec {{docker_container_name}}$DEV ln -s /var/run/redis/socks/redis$DEV.sock /var/run/redis/redis.sock
 	docker restart {{docker_container_name}}$DEV
 	{%- endif %}
 	postStartAction
