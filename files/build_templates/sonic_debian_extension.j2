@@ -202,6 +202,11 @@ sudo cp $IMAGE_CONFIGS/topology/topology.service $FILESYSTEM_ROOT/etc/systemd/sy
 sudo LANG=C chroot $FILESYSTEM_ROOT systemctl enable topology.service
 sudo cp $IMAGE_CONFIGS/topology/topology.sh $FILESYSTEM_ROOT/usr/bin
 
+# Copy ip configuration service and scripts
+sudo cp $IMAGE_CONFIGS/ipconfig/ipconfig.service $FILESYSTEM_ROOT/etc/systemd/system/
+sudo LANG=C chroot $FILESYSTEM_ROOT systemctl enable ipconfig.service
+sudo cp $IMAGE_CONFIGS/ipconfig/ipconfig.sh $FILESYSTEM_ROOT/usr/bin
+
 # Copy updategraph script and service file
 j2 files/build_templates/updategraph.service.j2 | sudo tee $FILESYSTEM_ROOT/etc/systemd/system/updategraph.service
 sudo LANG=C chroot $FILESYSTEM_ROOT systemctl enable updategraph.service
