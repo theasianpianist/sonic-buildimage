@@ -5,7 +5,7 @@
 # commands being sent to the base container name. E.g. `docker start database$DEV` simply starts
 # the container `database` if no instance number is passed since `$DEV` is not defined
 
-{% set multi_instance = ["namespace", "database", "swss", "syncd", "bgp"] %} # list of containers to run multiple instances of
+{% set multi_instance = ["namespace", "database", "swss", "syncd", "bgp", "teamd"] %} # list of containers to run multiple instances of
 
 
 {%- if docker_container_name == "namespace" %}
