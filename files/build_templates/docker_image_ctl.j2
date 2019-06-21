@@ -97,8 +97,8 @@ function postStartAction()
         rm -f $WARM_DIR/dump.rdb
     else
         # If there is a config db dump file, load it
-        if [ -r /etc/sonic/config_db.json ]; then
-            sonic-cfggen -j /etc/sonic/config_db.json --write-to-db --redis-unix-sock-file $EXT_REDIS_SOCK
+        if [ -r /etc/sonic/config_db$DEV.json ]; then
+            sonic-cfggen -j /etc/sonic/config_db$DEV.json --write-to-db --redis-unix-sock-file $EXT_REDIS_SOCK
         fi
 
         redis-cli $DEV -n 4 -s $REDIS_SOCK SET "CONFIG_DB_INITIALIZED" "1" 
