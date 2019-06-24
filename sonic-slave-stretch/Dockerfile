@@ -232,6 +232,10 @@ RUN apt-get update && apt-get install -y \
         python3-colorama \
 # For initramfs
         bash-completion \
+# For sonic vs image build
+        dosfstools \
+        qemu-kvm \
+        libvirt-clients \
 # For lm-sensors
         librrd8 \
         librrd-dev \
@@ -282,6 +286,9 @@ RUN pip3 install redis
 # For supervisor build
 RUN pip install meld3 mock
 
+# For vs image build
+RUN pip install pexpect==4.6.0
+
 # For sonic-utilities build
 RUN pip install mockredispy==2.9.3
 RUN pip install pytest-runner==4.4
@@ -319,5 +326,5 @@ RUN add-apt-repository \
            $(lsb_release -cs) \
            stable"
 RUN apt-get update
-RUN apt-get install -y docker-ce=17.03.2~ce-0~debian-stretch
+RUN apt-get install -y docker-ce=5:18.09.5~3-0~debian-stretch
 RUN echo "DOCKER_OPTS=\"--experimental --storage-driver=vfs\"" >> /etc/default/docker
