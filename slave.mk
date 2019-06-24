@@ -151,6 +151,7 @@ $(info "CONFIGURED_PLATFORM"             : "$(if $(PLATFORM),$(PLATFORM),$(CONFI
 $(info "SONIC_CONFIG_PRINT_DEPENDENCIES" : "$(SONIC_CONFIG_PRINT_DEPENDENCIES)")
 $(info "SONIC_BUILD_JOBS"                : "$(SONIC_BUILD_JOBS)")
 $(info "SONIC_CONFIG_MAKE_JOBS"          : "$(SONIC_CONFIG_MAKE_JOBS)")
+$(info "SONIC_USE_DOCKER_BUILDKIT"       : "$(SONIC_USE_DOCKER_BUILDKIT)")
 $(info "USERNAME"                        : "$(USERNAME)")
 $(info "PASSWORD"                        : "$(PASSWORD)")
 $(info "ENABLE_DHCP_GRAPH_SERVICE"       : "$(ENABLE_DHCP_GRAPH_SERVICE)")
@@ -174,6 +175,12 @@ $(info "BUILD_TIMESTAMP"                 : "$(BUILD_TIMESTAMP)")
 $(info "BLDENV"                          : "$(BLDENV)")
 $(info "VS_PREPARE_MEM"                  : "$(VS_PREPARE_MEM)")
 $(info )
+
+ifeq ($(SONIC_USE_DOCKER_BUILDKIT),y)
+$(warning "Using SONIC_USE_DOCKER_BUILDKIT will produce larger installable SONiC image because of a docker bug (more details: https://github.com/moby/moby/issues/38903)")
+export DOCKER_BUILDKIT=1
+endif
+
 
 ###############################################################################
 ## Generic rules section
@@ -447,7 +454,7 @@ $(SONIC_INSTALL_WHEELS) : $(PYTHON_WHEELS_PATH)/%-install : .platform $$(addsuff
 docker-start :
 	@sudo sed -i '/http_proxy/d' /etc/default/docker
 	@sudo bash -c "echo \"export http_proxy=$$http_proxy\" >> /etc/default/docker"
-	@test x$(SONIC_CONFIG_USE_NATIVE_DOCKERD_FOR_BUILD) != x"y" && sudo service docker status &> /dev/null || ( sudo service docker start &> /dev/null && sleep 1 )
+	@test x$(SONIC_CONFIG_USE_NATIVE_DOCKERD_FOR_BUILD) != x"y" && sudo service docker status &> /dev/null || ( sudo service docker start &> /dev/null && ./scripts/wait_for_docker.sh 60 )
 
 # targets for building simple docker images that do not depend on any debian packages
 $(addprefix $(TARGET_PATH)/, $(SONIC_SIMPLE_DOCKER_IMAGES)) : $(TARGET_PATH)/%.gz : .platform docker-start $$(addsuffix -load,$$(addprefix $(TARGET_PATH)/,$$($$*.gz_LOAD_DOCKERS)))
@@ -471,17 +478,17 @@ $(addprefix $(TARGET_PATH)/, $(SONIC_SIMPLE_DOCKER_IMAGES)) : $(TARGET_PATH)/%.g
 
 SONIC_TARGET_LIST += $(addprefix $(TARGET_PATH)/, $(SONIC_SIMPLE_DOCKER_IMAGES))
 
-# Build stretch docker images only in stretch slave docker,
+# Build jessie docker images only in jessie slave docker,
 # jessie docker images only in jessie slave docker
-ifeq ($(BLDENV),stretch)
+ifeq ($(BLDENV),)
 	DOCKER_IMAGES_FOR_INSTALLERS := $(sort $(foreach installer,$(SONIC_INSTALLERS),$($(installer)_DOCKERS)))
-	DOCKER_IMAGES := $(SONIC_STRETCH_DOCKERS)
-	DOCKER_DBG_IMAGES := $(SONIC_STRETCH_DBG_DOCKERS)
-	SONIC_STRETCH_DOCKERS_FOR_INSTALLERS = $(filter $(SONIC_STRETCH_DOCKERS),$(DOCKER_IMAGES_FOR_INSTALLERS) $(EXTRA_STRETCH_TARGETS))
-	SONIC_STRETCH_DBG_DOCKERS_FOR_INSTALLERS = $(filter $(SONIC_STRETCH_DBG_DOCKERS), $(patsubst %.gz,%-$(DBG_IMAGE_MARK).gz, $(SONIC_STRETCH_DOCKERS_FOR_INSTALLERS)))
+	DOCKER_IMAGES := $(SONIC_JESSIE_DOCKERS)
+	DOCKER_DBG_IMAGES := $(SONIC_JESSIE_DBG_DOCKERS)
+	SONIC_JESSIE_DOCKERS_FOR_INSTALLERS = $(filter $(SONIC_JESSIE_DOCKERS),$(DOCKER_IMAGES_FOR_INSTALLERS) $(EXTRA_JESSIE_TARGETS))
+	SONIC_JESSIE_DBG_DOCKERS_FOR_INSTALLERS = $(filter $(SONIC_JESSIE_DBG_DOCKERS), $(patsubst %.gz,%-$(DBG_IMAGE_MARK).gz, $(SONIC_JESSIE_DOCKERS_FOR_INSTALLERS)))
 else
-	DOCKER_IMAGES := $(filter-out $(SONIC_STRETCH_DOCKERS), $(SONIC_DOCKER_IMAGES))
-	DOCKER_DBG_IMAGES := $(filter-out $(SONIC_STRETCH_DBG_DOCKERS), $(SONIC_DOCKER_DBG_IMAGES))
+	DOCKER_IMAGES := $(filter-out $(SONIC_JESSIE_DOCKERS), $(SONIC_DOCKER_IMAGES))
+	DOCKER_DBG_IMAGES := $(filter-out $(SONIC_JESSIE_DBG_DOCKERS), $(SONIC_DOCKER_DBG_IMAGES))
 endif
 
 # Targets for building docker images
@@ -553,7 +560,8 @@ $(addprefix $(TARGET_PATH)/, $(DOCKER_DBG_IMAGES)) : $(TARGET_PATH)/%-$(DBG_IMAG
 	./build_debug_docker_j2.sh $* $(subst -,_,$(notdir $($*.gz_PATH)))_dbg_debs $(subst -,_,$(notdir $($*.gz_PATH)))_image_dbgs > $($*.gz_PATH)/Dockerfile-dbg.j2
 	j2 $($*.gz_PATH)/Dockerfile-dbg.j2 > $($*.gz_PATH)/Dockerfile-dbg
 	docker info $(LOG)
-	docker build --squash --no-cache \
+	docker build \
+		$(if $($*.gz_DBG_DEPENDS), --squash --no-cache, --no-cache) \
 		--build-arg http_proxy=$(HTTP_PROXY) \
 		--build-arg https_proxy=$(HTTPS_PROXY) \
 		--build-arg docker_container_name=$($*.gz_CONTAINER_NAME) \
@@ -605,9 +613,10 @@ $(addprefix $(TARGET_PATH)/, $(SONIC_INSTALLERS)) : $(TARGET_PATH)/% : \
 	$(HEADER)
 	# Pass initramfs and linux kernel explicitly. They are used for all platforms
 	export debs_path="$(STRETCH_DEBS_PATH)"
+	export files_path="$(FILES_PATH)"
 	export python_debs_path="$(PYTHON_DEBS_PATH)" 
 	export initramfs_tools="$(STRETCH_DEBS_PATH)/$(INITRAMFS_TOOLS)"
-	export linux_kernel="$(STRTCH_DEBS_PATH)/$(LINUX_KERNEL)"
+	export linux_kernel="$(STRETCH_DEBS_PATH)/$(LINUX_KERNEL)"
 	export onie_recovery_image="$(FILES_PATH)/$(ONIE_RECOVERY_IMAGE)"
 	export kversion="$(KVERSION)"
 	export image_type="$($*_IMAGE_TYPE)"
@@ -629,38 +638,38 @@ $(addprefix $(TARGET_PATH)/, $(SONIC_INSTALLERS)) : $(TARGET_PATH)/% : \
 	$(foreach docker, $($*_DOCKERS),\
 		export docker_image="$(docker)"
 		export docker_image_name="$(basename $(docker))"
-		export docker_container_name="$($(docker)_CONTAINER_NAME)"
-		$(eval $(docker)_RUN_OPT += $($(docker)_$($*_IMAGE_TYPE)_RUN_OPT))
-		export docker_image_run_opt="$($(docker)_RUN_OPT)"
-		j2 files/build_templates/docker_image_ctl.j2 > $($(docker)_CONTAINER_NAME).sh
-		if [ -f files/build_templates/$($(docker)_CONTAINER_NAME).service.j2 ]; then
-			j2 files/build_templates/$($(docker)_CONTAINER_NAME).service.j2 > $($(docker)_CONTAINER_NAME).service
+		export docker_container_name="$($(docker:-dbg.gz=.gz)_CONTAINER_NAME)"
+		$(eval $(docker:-dbg.gz=.gz)_RUN_OPT += $($(docker:-dbg.gz=.gz)_$($*_IMAGE_TYPE)_RUN_OPT))
+		export docker_image_run_opt="$($(docker:-dbg.gz=.gz)_RUN_OPT)"
+		j2 files/build_templates/docker_image_ctl.j2 > $($(docker:-dbg.gz=.gz)_CONTAINER_NAME).sh
+		if [ -f files/build_templates/$($(docker:-dbg.gz=.gz)_CONTAINER_NAME).service.j2 ]; then
+			j2 files/build_templates/$($(docker:-dbg.gz=.gz)_CONTAINER_NAME).service.j2 > $($(docker:-dbg.gz=.gz)_CONTAINER_NAME).service
 
 		# Accounts for template files
-		elif [ -f files/build_templates/$($(docker)_CONTAINER_NAME)@.service.j2 ]; then
-			j2 files/build_templates/$($(docker)_CONTAINER_NAME)@.service.j2 > $($(docker)_CONTAINER_NAME)@.service
+		elif [ -f files/build_templates/$($(docker:-dbg.gz=.gz)_CONTAINER_NAME)@.service.j2 ]; then
+			j2 files/build_templates/$($(docker:-dbg.gz=.gz)_CONTAINER_NAME)@.service.j2 > $($(docker:-dbg.gz=.gz)_CONTAINER_NAME)@.service
 
 			# performs the same check as the elif above, except with make commands so eval behaves properly
-			$(if $(shell ls files/build_templates/$($(docker)_CONTAINER_NAME)@.service.j2 2>/dev/null),\
-				$(eval $(docker)_TEMPLATE = yes))
+			$(if $(shell ls files/build_templates/$($(docker:-dbg.gz=.gz)_CONTAINER_NAME)@.service.j2 2>/dev/null),\
+				$(eval $(docker:-dbg.gz=.gz)_TEMPLATE = yes))
 		fi
-		chmod +x $($(docker)_CONTAINER_NAME).sh
+		chmod +x $($(docker:-dbg.gz=.gz)_CONTAINER_NAME).sh
 	)
 	
 	# Exported variables are used by sonic_debian_extension.sh
-	export installer_start_scripts="$(foreach docker, $($*_DOCKERS),$(addsuffix .sh, $($(docker)_CONTAINER_NAME)))"
+	export installer_start_scripts="$(foreach docker, $($*_DOCKERS),$(addsuffix .sh, $($(docker:-dbg.gz=.gz)_CONTAINER_NAME)))"
 
 	# Marks template services with an "@" according to systemd convention
 	# If the $($docker)_TEMPLATE) variable is set, the service will be treated as a template
 	$(foreach docker, $($*_DOCKERS),\
-		$(if $($(docker)_TEMPLATE),\
-			$(eval SERVICES += "$(addsuffix @.service, $($(docker)_CONTAINER_NAME))"),\
-			$(eval SERVICES += "$(addsuffix .service, $($(docker)_CONTAINER_NAME))")
+		$(if $($(docker:-dbg.gz=.gz)_TEMPLATE),\
+			$(eval SERVICES += "$(addsuffix @.service, $($(docker:-dbg.gz=.gz)_CONTAINER_NAME))"),\
+			$(eval SERVICES += "$(addsuffix .service, $($(docker:-dbg.gz=.gz)_CONTAINER_NAME))")
 		)
 	)
 	export installer_services="$(SERVICES)"
 									
-	export installer_extra_files="$(foreach docker, $($*_DOCKERS), $(foreach file, $($(docker)_BASE_IMAGE_FILES), $($(docker)_PATH)/base_image_files/$(file)))"
+	export installer_extra_files="$(foreach docker, $($*_DOCKERS), $(foreach file, $($(docker:-dbg.gz=.gz)_BASE_IMAGE_FILES), $($(docker:-dbg.gz=.gz)_PATH)/base_image_files/$(file)))"
 
 	j2 -f env files/initramfs-tools/union-mount.j2 onie-image.conf > files/initramfs-tools/union-mount
 	j2 -f env files/initramfs-tools/arista-convertfs.j2 onie-image.conf > files/initramfs-tools/arista-convertfs
@@ -683,9 +692,9 @@ $(addprefix $(TARGET_PATH)/, $(SONIC_INSTALLERS)) : $(TARGET_PATH)/% : \
 		./build_image.sh $(LOG)
 
 	$(foreach docker, $($*_DOCKERS), \
-		rm -f $($(docker)_CONTAINER_NAME).sh
-		rm -f $($(docker)_CONTAINER_NAME).service
-		rm -f $($(docker)_CONTAINER_NAME)@.service
+		rm -f $($(docker:-dbg.gz=.gz)_CONTAINER_NAME).sh
+		rm -f $($(docker:-dbg.gz=.gz)_CONTAINER_NAME).service
+		rm -f $($(docker:-dbg.gz=.gz)_CONTAINER_NAME)@.service
 	)
 	rm -f updategraph.service
 
@@ -753,6 +762,7 @@ stretch : $$(addprefix $(DEBS_PATH)/,$$(SONIC_STRETCH_DEBS)) \
           $$(addprefix $(TARGET_PATH)/,$$(SONIC_STRETCH_DOCKERS_FOR_INSTALLERS)) \
           $$(addprefix $(TARGET_PATH)/,$$(SONIC_STRETCH_DBG_DOCKERS_FOR_INSTALLERS))
 
+jessie : $$(addprefix $(TARGET_PATH)/,$$(SONIC_JESSIE_DOCKERS_FOR_INSTALLERS))
 
 ###############################################################################
 ## Standard targets
