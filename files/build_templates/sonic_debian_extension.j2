@@ -155,8 +155,13 @@ sudo LANG=C cp $IMAGE_CONFIGS/warmboot-finalizer/warmboot-finalizer.service $FIL
 sudo LANG=C chroot $FILESYSTEM_ROOT systemctl enable warmboot-finalizer.service
 
 # Copy rsyslog configuration files and templates
-sudo cp $IMAGE_CONFIGS/rsyslog/rsyslog-config.service  $FILESYSTEM_ROOT/etc/systemd/system/
-sudo LANG=C chroot $FILESYSTEM_ROOT systemctl enable rsyslog-config.service
+sudo cp $IMAGE_CONFIGS/rsyslog/rsyslog-config@.service  $FILESYSTEM_ROOT/etc/systemd/system/
+sudo cp $IMAGE_CONFIGS/rsyslog/rsyslog-namespace@.service $FILESYSTEM_ROOT/etc/systemd/system
+{%- for i in range(6) %}
+sudo LANG=C chroot $FILESYSTEM_ROOT systemctl enable rsyslog-namespace@{{i}}.service
+sudo LANG=C chroot $FILESYSTEM_ROOT systemctl enable rsyslog-config@{{i}}.service
+{%- endfor %}
+
 sudo cp $IMAGE_CONFIGS/rsyslog/rsyslog-config.sh $FILESYSTEM_ROOT/usr/bin/
 sudo cp $IMAGE_CONFIGS/rsyslog/rsyslog.conf.j2 $FILESYSTEM_ROOT_USR_SHARE_SONIC_TEMPLATES/
 sudo cp $IMAGE_CONFIGS/rsyslog/rsyslog.d/* $FILESYSTEM_ROOT/etc/rsyslog.d/
@@ -193,6 +198,16 @@ sudo cp $BUILD_TEMPLATES/qos_config.j2 $FILESYSTEM_ROOT_USR_SHARE_SONIC_TEMPLATE
 sudo cp $IMAGE_CONFIGS/hostname/hostname-config.service  $FILESYSTEM_ROOT/etc/systemd/system/
 sudo LANG=C chroot $FILESYSTEM_ROOT systemctl enable hostname-config.service
 sudo cp $IMAGE_CONFIGS/hostname/hostname-config.sh $FILESYSTEM_ROOT/usr/bin/
+
+# Copy internal topology configuration scripts
+sudo cp $IMAGE_CONFIGS/topology/topology.service $FILESYSTEM_ROOT/etc/systemd/system/
+sudo LANG=C chroot $FILESYSTEM_ROOT systemctl enable topology.service
+sudo cp $IMAGE_CONFIGS/topology/topology.sh $FILESYSTEM_ROOT/usr/bin
+
+# Copy ip configuration service and scripts
+sudo cp $IMAGE_CONFIGS/ipconfig/ipconfig.service $FILESYSTEM_ROOT/etc/systemd/system/
+sudo LANG=C chroot $FILESYSTEM_ROOT systemctl enable ipconfig.service
+sudo cp $IMAGE_CONFIGS/ipconfig/ipconfig.sh $FILESYSTEM_ROOT/usr/bin
 
 # Copy updategraph script and service file
 j2 files/build_templates/updategraph.service.j2 | sudo tee $FILESYSTEM_ROOT/etc/systemd/system/updategraph.service
@@ -302,7 +317,13 @@ sudo cp {{script}} $FILESYSTEM_ROOT/usr/bin/
 {% for service in installer_services.split(' ') -%}
 if [ -f {{service}} ]; then
     sudo cp {{service}} $FILESYSTEM_ROOT/etc/systemd/system/
-    sudo LANG=C chroot $FILESYSTEM_ROOT systemctl enable {{service}}
+	{% if '@' in service %}
+		{% for i in range(6) %}
+	sudo LANG=C chroot $FILESYSTEM_ROOT systemctl enable {{service.split('.')[0]}}{{i}}.service
+		{% endfor %}
+	{% else %}
+	sudo LANG=C chroot $FILESYSTEM_ROOT systemctl enable {{service}}
+	{% endif %}
 fi
 {% endfor %}
 sudo LANG=C chroot $FILESYSTEM_ROOT fuser -km /sys || true
@@ -312,6 +333,9 @@ sudo LANG=C chroot $FILESYSTEM_ROOT umount -lf /sys
 # Copy swss and syncd service script
 sudo LANG=C cp $SCRIPTS_DIR/swss.sh $FILESYSTEM_ROOT/usr/local/bin/swss.sh
 sudo LANG=C cp $SCRIPTS_DIR/syncd.sh $FILESYSTEM_ROOT/usr/local/bin/syncd.sh
+
+# Copy network namespace wrapper script
+sudo LANG=C cp $SCRIPTS_DIR/namespace.sh $FILESYSTEM_ROOT/usr/local/bin/namespace 
 
 # Copy systemd timer configuration
 # It implements delayed start of services
