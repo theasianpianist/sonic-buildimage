@@ -5,7 +5,7 @@ Requires=swss@%i.service
 #After=updategraph.service 
 After=swss@%i.service
 Before=ntp-config.service
-PartOf=namespace@%i.service
+PartOf=namespace@%i.service swss@%i.service
 
 [Service]
 User=root
