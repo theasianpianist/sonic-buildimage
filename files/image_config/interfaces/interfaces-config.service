@@ -1,7 +1,9 @@
 [Unit]
 Description=Update interfaces configuration
-Requires=updategraph.service
-After=updategraph.service
+Requires=namespace@0.service namespace@1.service namespace@2.service namespace@3.service namespace@4.service namespace@5.service
+After=namespace@0.service namespace@1.service namespace@2.service namespace@3.service namespace@4.service namespace@5.service
+#Requires=updategraph.service
+#After=updategraph.service
 
 [Service]
 Type=oneshot
