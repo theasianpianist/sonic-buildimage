@@ -2,13 +2,13 @@
 
 start () {
 	# Move external links into assigned frontend namespaces
-	# eth0  - eth15: namespace0
-	# eth16 - eth31: namespace1
-	# eth32 - eth47: namespace2
-	# eth48 - eth63: namespace3
-	for NS in `seq 0 3`; do
+	# eth0  - eth15: namespace2
+	# eth16 - eth31: namespace3
+	# eth32 - eth47: namespace4
+	# eth48 - eth63: namespace5
+    for NS in `seq 2 5`; do
 		for NUM in `seq 1 16`; do
-			ORIG="eth$((16*$NS+$NUM-1))"
+			ORIG="eth$((16*$(($NS-2))+$NUM-1))"
 			TEMP="ethTemp999"
 			ip link set dev $ORIG down
 			ip link set dev $ORIG name $TEMP # rename to prevent conflicts before renaming in new namespace
@@ -19,11 +19,11 @@ start () {
 	done
 
 	# Connect all backend namespaces to frontend namespaces
-	for BACKEND in `seq 4 5`; do
-		for FRONTEND in `seq 0 3`; do
+    for BACKEND in `seq 0 1`; do
+        for FRONTEND in `seq 2 5`; do
 			for LINK in `seq 1 8`; do
-				BACK_NAME="eth$((8*$FRONTEND+$LINK))"
-				FRONT_OFFSET="$(($BACKEND-2))" # links to namespace4 will be links 17-24 in all frontend namespaces
+				BACK_NAME="eth$((8*$(($FRONTEND-2))+$LINK))"
+				FRONT_OFFSET="$(($BACKEND+2))" 
 				FRONT_NAME="eth$((8*$FRONT_OFFSET+$LINK))" 
 				TEMP_BACK="ethBack999"
 				TEMP_FRONT="ethFront999"
@@ -43,10 +43,10 @@ start () {
 }
 
 stop() {
-	for NS in `seq 0 3`; do
+	for NS in `seq 2 5`; do
 		for NUM in `seq 1 16`; do
 			TEMP="eth999"
-			NAME="eth$((16*$NS+$NUM-1))"
+			NAME="eth$((16*$(($NS-2))+$NUM-1))"
 			sudo ip netns exec namespace$NS ip link set dev eth$NUM down
 			sudo ip netns exec namespace$NS ip link set dev eth$NUM name $TEMP
 			sudo ip netns exec namespace$NS ip link set dev $TEMP netns 1
@@ -55,7 +55,7 @@ stop() {
 		done
 	done
 
-	for NS in `seq 4 5`; do
+	for NS in `seq 0 1`; do
 		for NUM in `seq 1 32`; do
 			sudo ip netns exec namespace$NS ip link set dev eth$NUM down
 			sudo ip netns exec namespace$NS ip link delete dev eth$NUM
