@@ -25,6 +25,9 @@ route-map FROM_BGP_SPEAKER_V4 permit 10
 route-map TO_BGP_SPEAKER_V4 deny 10
 !
 router bgp {{ DEVICE_METADATA['localhost']['bgp_asn'] }}
+{% if DEVICE_METADATA['localhost']['frontend'] == 'yes' %}
+  redistribute connected
+{% endif %}
   bgp log-neighbor-changes
   bgp bestpath as-path multipath-relax
   no bgp default ipv4-unicast
@@ -85,7 +88,7 @@ router bgp {{ DEVICE_METADATA['localhost']['bgp_asn'] }}
     neighbor {{ neighbor_addr }} route-reflector-client
 {% endif %}
 {% if bgp_session['nhopself'] | int != 0 %}
-    neighbor {{ neighbor_addr }} next-hop-self
+    neighbor {{ neighbor_addr }} next-hop-self all
 {% endif %}
     maximum-paths 64
   exit-address-family
@@ -101,7 +104,7 @@ router bgp {{ DEVICE_METADATA['localhost']['bgp_asn'] }}
     neighbor {{ neighbor_addr }} route-reflector-client
 {% endif %}
 {% if bgp_session['nhopself'] | int != 0 %}
-    neighbor {{ neighbor_addr }} next-hop-self
+    neighbor {{ neighbor_addr }} next-hop-self all
 {% endif %}
 {% if bgp_session['asn'] != DEVICE_METADATA['localhost']['bgp_asn'] %}
     neighbor {{ neighbor_addr }} route-map set-next-hop-global-v6 in
