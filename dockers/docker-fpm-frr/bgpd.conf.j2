@@ -24,9 +24,23 @@ route-map FROM_BGP_SPEAKER_V4 permit 10
 !
 route-map TO_BGP_SPEAKER_V4 deny 10
 !
+{% if DEVICE_METADATA['localhost']['frontend'] == 'yes' %}
+route-map HIDE_INTERNAL permit 10
+  set community local-AS
+!
+{% endif %}
+{% if DEVICE_METADATA['localhost']['frontend'] == 'no' %}
+route-map OVERRIDE_ORIGINATOR_ID permit 10
+{% for (name, prefix) in LOOPBACK_INTERFACE|pfx_filter %}
+{% if prefix | ipv4 and name == 'Loopback0' %}
+  set originator-id {{ prefix | ip }}
+{% endif %}
+{% endfor %}
+!
+{% endif %}
 router bgp {{ DEVICE_METADATA['localhost']['bgp_asn'] }}
 {% if DEVICE_METADATA['localhost']['frontend'] == 'yes' %}
-  redistribute connected
+  redistribute connected route-map HIDE_INTERNAL
 {% endif %}
   bgp log-neighbor-changes
   bgp bestpath as-path multipath-relax
@@ -69,6 +83,9 @@ router bgp {{ DEVICE_METADATA['localhost']['bgp_asn'] }}
 {% if bgp_session['asn'] | int != 0 %}
   neighbor {{ neighbor_addr }} remote-as {{ bgp_session['asn'] }}
   neighbor {{ neighbor_addr }} description {{ bgp_session['name'] }}
+{% if DEVICE_METADATA['localhost']['frontend'] == 'no' %}
+  neighbor {{ neighbor_addr }} route-map OVERRIDE_ORIGINATOR_ID in
+{% endif %}
 {# set the bgp neighbor timers if they have not default values #}
 {% if     (bgp_session['keepalive'] is defined and bgp_session['keepalive'] | int != 60)
       or  (bgp_session['holdtime'] is defined  and bgp_session['holdtime']  | int != 180) %}
