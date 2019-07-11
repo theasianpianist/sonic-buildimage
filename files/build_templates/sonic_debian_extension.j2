@@ -155,12 +155,17 @@ sudo LANG=C cp $IMAGE_CONFIGS/warmboot-finalizer/warmboot-finalizer.service $FIL
 sudo LANG=C chroot $FILESYSTEM_ROOT systemctl enable warmboot-finalizer.service
 
 # Copy rsyslog configuration files and templates
+{%- if multi_asic == "True" %}
 sudo cp $IMAGE_CONFIGS/rsyslog/rsyslog-config@.service  $FILESYSTEM_ROOT/etc/systemd/system/
 sudo cp $IMAGE_CONFIGS/rsyslog/rsyslog-namespace@.service $FILESYSTEM_ROOT/etc/systemd/system
 {%- for i in range(6) %}
 sudo LANG=C chroot $FILESYSTEM_ROOT systemctl enable rsyslog-namespace@{{i}}.service
 sudo LANG=C chroot $FILESYSTEM_ROOT systemctl enable rsyslog-config@{{i}}.service
 {%- endfor %}
+{%- else %}
+sudo cp $IMAGE_CONFIGS/rsyslog/rsyslog-config.service  $FILESYSTEM_ROOT/etc/systemd/system/
+sudo LANG=C chroot $FILESYSTEM_ROOT systemctl enable rsyslog-config.service
+{%- endif %}
 
 sudo cp $IMAGE_CONFIGS/rsyslog/rsyslog-config.sh $FILESYSTEM_ROOT/usr/bin/
 sudo cp $IMAGE_CONFIGS/rsyslog/rsyslog.conf.j2 $FILESYSTEM_ROOT_USR_SHARE_SONIC_TEMPLATES/
@@ -200,9 +205,11 @@ sudo LANG=C chroot $FILESYSTEM_ROOT systemctl enable hostname-config.service
 sudo cp $IMAGE_CONFIGS/hostname/hostname-config.sh $FILESYSTEM_ROOT/usr/bin/
 
 # Copy internal topology configuration scripts
+{%- if multi_asic == "True" %}
 sudo cp $IMAGE_CONFIGS/topology/topology.service $FILESYSTEM_ROOT/etc/systemd/system/
 sudo LANG=C chroot $FILESYSTEM_ROOT systemctl enable topology.service
 sudo cp $IMAGE_CONFIGS/topology/topology.sh $FILESYSTEM_ROOT/usr/bin
+{%- endif %}
 
 # Copy updategraph script and service file
 j2 files/build_templates/updategraph.service.j2 | sudo tee $FILESYSTEM_ROOT/etc/systemd/system/updategraph.service
@@ -365,12 +372,21 @@ sudo chmod 755 $FILESYSTEM_ROOT/usr/bin/mlnx-fw-upgrade.sh
 {% endif %}
 
 {%- if SONIC_ROUTING_STACK == "frr" -%}
-{% for i in range(6) %}
+    {%- if multi_asic == "True" %}
+        {% for i in range(6) %}
 sudo mkdir $FILESYSTEM_ROOT/etc/sonic/frr{{i}}
 sudo touch $FILESYSTEM_ROOT/etc/sonic/frr{{i}}/frr.conf
 sudo touch $FILESYSTEM_ROOT/etc/sonic/frr{{i}}/vtysh.conf
 sudo chown -R $FRR_USER_UID:$FRR_USER_GID $FILESYSTEM_ROOT/etc/sonic/frr{{i}}
 sudo chmod -R 640 $FILESYSTEM_ROOT/etc/sonic/frr{{i}}/
 sudo chmod 750 $FILESYSTEM_ROOT/etc/sonic/frr{{i}}
-{% endfor -%}
+        {%- endfor %}
+    {%- else %}
+sudo mkdir $FILESYSTEM_ROOT/etc/sonic/frr
+sudo touch $FILESYSTEM_ROOT/etc/sonic/frr/frr.conf
+sudo touch $FILESYSTEM_ROOT/etc/sonic/frr/vtysh.conf
+sudo chown -R $FRR_USER_UID:$FRR_USER_GID $FILESYSTEM_ROOT/etc/sonic/frr
+sudo chmod -R 640 $FILESYSTEM_ROOT/etc/sonic/frr/
+sudo chmod 750 $FILESYSTEM_ROOT/etc/sonic/frr
+    {%- endif %}
 {%- endif %}
