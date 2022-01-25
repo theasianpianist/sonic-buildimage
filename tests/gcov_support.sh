@@ -146,7 +146,7 @@ lcov_merge_all()
     cp $1/lcov_cobertura.py $1/common_work/gcov/
     python $1/common_work/gcov/lcov_cobertura.py total.info -o coverage.xml
 
-    sed -i "s#common_work/#$1/common_work/#" coverage.xml
+    sed -i "s#common_work/gcov/#$1/#" coverage.xml
 
     cd gcov_output/
     if [ ! -d ${ALLMERGE_DIR} ]; then
