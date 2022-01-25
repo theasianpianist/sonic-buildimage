@@ -146,7 +146,7 @@ lcov_merge_all()
     cp $1/lcov_cobertura.py $1/common_work/gcov/
     python $1/common_work/gcov/lcov_cobertura.py total.info -o coverage.xml
 
-    sed -i "s#common_work/gcov/#$1/#" coverage.xml
+    sed -i "s#common_work/gcov/#$2/#" coverage.xml
 
     cd gcov_output/
     if [ ! -d ${ALLMERGE_DIR} ]; then
@@ -206,7 +206,11 @@ gcov_set_environment()
 
 gcov_merge_info()
 {
-    lcov_merge_all $1
+    if [ -z "$2" ]; then
+        lcov_merge_all $1 $1
+    else
+        lcov_merge_all $1 $2
+    fi
 }
 
 gcov_support_generate_report()
@@ -391,7 +395,7 @@ main()
             gcov_support_generate_report
             ;;
         merge_container_info)
-            gcov_merge_info $2
+            gcov_merge_info $2 $3
             ;;
         set_environment)
             gcov_set_environment $2
@@ -403,7 +407,10 @@ main()
             echo " collect_gcda_files    collect .gcda files in a docker"
             echo " generate              generate gcov report in html form (all or submodule_name)"
             echo " tar_output            tar gcov_output forder"
-            echo " merge_container_info  merge homonymic info files from different container"
+            echo " merge_container_info <working directory> <source directory> merge homonymic info files from different container"
+            echo "     - Working directory (required): the main working directory which should"
+            echo "       contain the `lcov_cobertura.py` script"
+            echo "     - Original source directory (optional): in the final coverage.xml file, change all relative file paths to absolute paths starting in this directory"
             echo " set_environment       set environment ready for report generating in containers"
     esac
 }

@@ -103,7 +103,7 @@ jobs:
       ls -lh ./*
       sudo chmod +x ./gcov_support.sh
       sudo ./gcov_support.sh generate
-      sudo ./gcov_support.sh merge_container_info $(System.DefaultWorkingDirectory)
+      sudo ./gcov_support.sh merge_container_info $(Build.ArtifactStagingDirectory) $(System.DefaultWorkingDirectory)
       sudo cp -rf gcov_output $(Build.ArtifactStagingDirectory)
       sudo cp -rf $(Build.ArtifactStagingDirectory)/gcov_output/AllMergeReport/coverage.xml $(System.DefaultWorkingDirectory)/
       ls -lh $(Build.ArtifactStagingDirectory)
