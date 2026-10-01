@@ -315,19 +315,20 @@ class TunnelPacketHandler(object):
 
     def write_count_to_db(self):
         while True:
-            # use a set to automatically deduplicate destination IPs
+            # Use a set to automatically deduplicate command sequences.
             to_run = set()
 
-            to_run.add(tuple(self.pending_cmds.get()))
+            to_run.add(tuple(tuple(cmd) for cmd in self.pending_cmds.get()))
             pkt_count = 1
             while not self.pending_cmds.empty() and len(to_run) < 100:
-                to_run.add(tuple(self.pending_cmds.get()))
-                # we should always count each packet, but only ping for each unique IP
+                to_run.add(tuple(tuple(cmd) for cmd in self.pending_cmds.get()))
+                # Count every packet, but run commands only for each unique sequence.
                 pkt_count += 1
 
-            for cmds in to_run:
-                logger.log_info("Running command '{}'".format(' '.join(cmds)))
-                subprocess.run(cmds, stdout=subprocess.DEVNULL)
+            for command_sequence in to_run:
+                for cmd in command_sequence:
+                    logger.log_info("Running command '{}'".format(' '.join(cmd)))
+                    subprocess.run(cmd, stdout=subprocess.DEVNULL)
             try:
                 curr_count = int(self.counters_db.get(COUNTERS_DB, self.tunnel_counter_table, COUNTER_KEY))
             except TypeError:
@@ -343,13 +344,18 @@ class TunnelPacketHandler(object):
         """
         inner_packet_type = self.get_inner_pkt_type(packet)
         if inner_packet_type and packet[IP].dst == self.self_ip:
-            cmds = ['timeout', '0.2', 'ping', '-c1',
-                    '-W1', '-i0', '-n', '-q']
+            ping_cmd = ['timeout', '0.2', 'ping', '-c1',
+                        '-W1', '-i0', '-n', '-q']
             if inner_packet_type == IPv6:
-                cmds.append('-6')
+                ping_cmd.append('-6')
             dst_ip = packet[IP].payload[inner_packet_type].dst
-            cmds.append(dst_ip)
-            self.pending_cmds.put(cmds)
+            ping_cmd.append(dst_ip)
+            command_sequence = [ping_cmd]
+            if inner_packet_type == IPv6:
+                command_sequence.append(
+                    ['ndisc6', '-q', '-w', '0', '-1', dst_ip, packet.sniffed_on]
+                )
+            self.pending_cmds.put(command_sequence)
 
     def listen_for_tunnel_pkts(self):
         """
