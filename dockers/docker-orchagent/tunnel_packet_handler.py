@@ -408,7 +408,8 @@ class TunnelPacketHandler(object):
                 egress_intf = self.get_egress_intf(dst_ip)
                 if egress_intf:
                     command_sequence.append(
-                        ['ndisc6', '-q', '-w', '0', '-1', dst_ip, egress_intf]
+                        ['ndisc6', '-q', '-r', '1', '-w', '0',
+                         dst_ip, egress_intf]
                     )
             self.pending_cmds.put(command_sequence)
 
