@@ -111,16 +111,6 @@ assert_eq "DualToR IPv4 link-local mismatch is not logged" "" "$(<"$LOGGER_LOG")
 
 IP_ARGS=()
 TIMEOUT_ARGS=()
-SONIC_DB_RESPONSE="00:00:00:00:00:00"
-: > "$LOGGER_LOG"
-reconcile_neighbor_mac_mismatches \
-    "dualtor" \
-    "192.0.2.1,Vlan1000,02:00:00:00:00:01"
-assert_eq "zero-MAC APPL_DB neighbor is not flushed" "0" "${#IP_ARGS[@]}"
-assert_eq "zero-MAC APPL_DB neighbor mismatch is not logged" "" "$(<"$LOGGER_LOG")"
-
-IP_ARGS=()
-TIMEOUT_ARGS=()
 SONIC_DB_RESPONSE="02:00:00:00:00:02"
 : > "$LOGGER_LOG"
 reconcile_neighbor_mac_mismatches \

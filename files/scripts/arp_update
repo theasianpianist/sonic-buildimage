@@ -105,10 +105,6 @@ reconcile_neighbor_mac_mismatches() {
         fi
 
         appl_db_mac="$(sonic-db-cli -s APPL_DB hget "NEIGH_TABLE:${intf}:${ip}" neigh)"
-        if [[ "$appl_db_mac" == "00:00:00:00:00:00" ]]; then
-            continue
-        fi
-
         if [[ "$kernel_mac" != "$appl_db_mac" ]]; then
             logger -p warning "MAC mismatch for ${ip} on ${intf} - kernel: ${kernel_mac}, APPL_DB: ${appl_db_mac}"
             ip neigh flush "$ip"
