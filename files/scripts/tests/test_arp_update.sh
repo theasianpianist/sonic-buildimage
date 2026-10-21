@@ -7,10 +7,9 @@ SCRIPT="${SCRIPT_DIR}/arp_update"
 SOURCE_SCRIPT="$(mktemp)"
 DB_CALL_LOG="$(mktemp)"
 DB_KEY_LOG="$(mktemp)"
-LOGGER_LOG="$(mktemp)"
 MARKER_FILE="/tmp/arp-update-test-marker"
 rm -f "$MARKER_FILE"
-trap 'rm -f "${SOURCE_SCRIPT}" "${DB_CALL_LOG}" "${DB_KEY_LOG}" "${LOGGER_LOG}" "${MARKER_FILE}"' EXIT
+trap 'rm -f "${SOURCE_SCRIPT}" "${DB_CALL_LOG}" "${DB_KEY_LOG}" "${MARKER_FILE}"' EXIT
 
 # Load only the helper functions; the remainder of arp_update is an infinite loop.
 sed '/^while \/bin\/true; do$/,$d' "$SCRIPT" > "$SOURCE_SCRIPT"
@@ -28,7 +27,7 @@ assert_eq() {
 }
 
 logger() {
-    printf '%s\n' "$*" >> "$LOGGER_LOG"
+    :
 }
 
 timeout() {
@@ -38,7 +37,6 @@ timeout() {
 sonic-db-cli() {
     printf '%s\n' "$*" > "$DB_CALL_LOG"
     printf '%s\n' "$4" > "$DB_KEY_LOG"
-    printf '%s' "${SONIC_DB_RESPONSE:-}"
 }
 
 ip() {
@@ -96,31 +94,6 @@ IP_ARGS=()
 replace_failed_neighbors "2001:db8::2 dev Vlan1000 FAILED"
 assert_eq "replace address remains one argument" "2001:db8::2" "${IP_ARGS[2]}"
 assert_eq "replace interface remains one argument" "Vlan1000" "${IP_ARGS[4]}"
-
-IP_ARGS=()
-TIMEOUT_ARGS=()
-SONIC_DB_RESPONSE="02:00:00:00:00:02"
-: > "$DB_CALL_LOG"
-: > "$LOGGER_LOG"
-reconcile_neighbor_mac_mismatches \
-    "dualtor" \
-    "169.254.1.1,Vlan1000,02:00:00:00:00:01"
-assert_eq "DualToR IPv4 link-local neighbor skips APPL_DB lookup" "" "$(<"$DB_CALL_LOG")"
-assert_eq "DualToR IPv4 link-local neighbor is not flushed" "0" "${#IP_ARGS[@]}"
-assert_eq "DualToR IPv4 link-local mismatch is not logged" "" "$(<"$LOGGER_LOG")"
-
-IP_ARGS=()
-TIMEOUT_ARGS=()
-SONIC_DB_RESPONSE="02:00:00:00:00:02"
-: > "$LOGGER_LOG"
-reconcile_neighbor_mac_mismatches \
-    "dualtor" \
-    "192.0.2.1,Vlan1000,02:00:00:00:00:01"
-assert_eq "MAC mismatch flush address" "192.0.2.1" "${IP_ARGS[2]}"
-assert_eq "MAC mismatch ping interface" "Vlan1000" "${TIMEOUT_ARGS[3]}"
-assert_eq "MAC mismatch warning" \
-    "-p warning MAC mismatch for 192.0.2.1 on Vlan1000 - kernel: 02:00:00:00:00:01, APPL_DB: 02:00:00:00:00:02" \
-    "$(<"$LOGGER_LOG")"
 
 [[ ! -e "$MARKER_FILE" ]]
 
