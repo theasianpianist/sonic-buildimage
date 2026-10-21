@@ -95,6 +95,17 @@ replace_failed_neighbors "2001:db8::2 dev Vlan1000 FAILED"
 assert_eq "replace address remains one argument" "2001:db8::2" "${IP_ARGS[2]}"
 assert_eq "replace interface remains one argument" "Vlan1000" "${IP_ARGS[4]}"
 
+NEIGHBOR_FIXTURE=$'fe80::1 dev Vlan1000 lladdr 02:00:00:00:00:01 STALE\n169.254.1.1 dev Vlan1000 lladdr 02:00:00:00:00:02 STALE\n192.0.2.1 dev Vlan1000 lladdr 02:00:00:00:00:03 STALE'
+DUALTOR_NEIGHBORS="$(grep -v "$DUALTOR_LINK_LOCAL_FILTER" <<< "$NEIGHBOR_FIXTURE")"
+assert_eq "DualToR filter excludes IPv4 and IPv6 link-local neighbors" \
+    "192.0.2.1 dev Vlan1000 lladdr 02:00:00:00:00:03 STALE" \
+    "$DUALTOR_NEIGHBORS"
+
+NON_DUALTOR_NEIGHBORS="$(grep -v "fe80" <<< "$NEIGHBOR_FIXTURE")"
+assert_eq "non-DualToR filter retains IPv4 link-local neighbors" \
+    $'169.254.1.1 dev Vlan1000 lladdr 02:00:00:00:00:02 STALE\n192.0.2.1 dev Vlan1000 lladdr 02:00:00:00:00:03 STALE' \
+    "$NON_DUALTOR_NEIGHBORS"
+
 [[ ! -e "$MARKER_FILE" ]]
 
 echo "arp_update helper tests passed"
